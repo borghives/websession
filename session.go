@@ -16,7 +16,7 @@ import (
 
 var WEB_SESSION_TTL = time.Hour * 12
 
-type WebSession struct {
+type Session struct {
 	ID           primitive.ObjectID `xml:"-" json:"-" bson:"_id,omitempty"`
 	FromIp       string             `xml:"-" json:"-" bson:"ip"`
 	GenerateTime time.Time          `xml:"-" json:"-" bson:"gen_tm"`
@@ -30,11 +30,11 @@ type WebSession struct {
 	ClientSig    string             `xml:"-" json:"-" bson:"-"`
 }
 
-func newWebSession(realIP string, clientSignature string) *WebSession {
+func newWebSession(realIP string, clientSignature string) *Session {
 	currentTime := time.Now()
 	id := primitive.NewObjectIDFromTimestamp(currentTime)
 	clientHash := HashToIdHexString(clientSignature)
-	return &WebSession{
+	return &Session{
 		ID:           id,
 		FromIp:       realIP,
 		GenerateTime: currentTime,
@@ -45,9 +45,9 @@ func newWebSession(realIP string, clientSignature string) *WebSession {
 	}
 }
 
-func refreshWebSession(realIP string, clientSignature string, oldSession *WebSession) *WebSession {
+func refreshWebSession(realIP string, clientSignature string, oldSession *Session) *Session {
 	clientHash := HashToIdHexString(clientSignature)
-	return &WebSession{
+	return &Session{
 		ID:           primitive.NewObjectID(),
 		FromIp:       realIP,
 		GenerateTime: time.Now(),
@@ -74,7 +74,7 @@ func SessionInitCheck() {
 	}
 }
 
-func EncodeSession(session WebSession) (string, error) {
+func EncodeSession(session Session) (string, error) {
 	//empty client sig only encrypting client hash
 	session.ClientSig = ""
 
@@ -85,12 +85,12 @@ func EncodeSession(session WebSession) (string, error) {
 	return EncryptMessage(getSessionSecret(), encodedBytes)
 }
 
-func DecodeSession(encodedSession string) (*WebSession, error) {
+func DecodeSession(encodedSession string) (*Session, error) {
 	decodedBytes, err := DecryptMessage(getSessionSecret(), encodedSession)
 	if err != nil {
 		return nil, err
 	}
-	var session WebSession
+	var session Session
 	err = bson.Unmarshal(decodedBytes, &session)
 	if err != nil {
 		return nil, err
@@ -141,7 +141,7 @@ func GetDomain() string {
 	return domain
 }
 
-func setNewRequestSession(w http.ResponseWriter, realIP string, clientSignature string) *WebSession {
+func setNewRequestSession(w http.ResponseWriter, realIP string, clientSignature string) *Session {
 
 	// Create a new session
 	session := newWebSession(realIP, clientSignature)
@@ -149,7 +149,7 @@ func setNewRequestSession(w http.ResponseWriter, realIP string, clientSignature 
 	return session
 }
 
-func refreshNewRequestSession(w http.ResponseWriter, realIP string, clientSignature string, oldSession *WebSession) *WebSession {
+func refreshNewRequestSession(w http.ResponseWriter, realIP string, clientSignature string, oldSession *Session) *Session {
 	// Create a new session
 	if oldSession == nil {
 		return setNewRequestSession(w, realIP, clientSignature)
@@ -160,7 +160,7 @@ func refreshNewRequestSession(w http.ResponseWriter, realIP string, clientSignat
 	return session
 }
 
-func SetSessionCookie(w http.ResponseWriter, session *WebSession) error {
+func SetSessionCookie(w http.ResponseWriter, session *Session) error {
 	domain := GetDomain()
 
 	// Create a new session
@@ -183,7 +183,7 @@ func SetSessionCookie(w http.ResponseWriter, session *WebSession) error {
 	return nil
 }
 
-func GetRequestSession(r *http.Request) (*WebSession, error) {
+func GetRequestSession(r *http.Request) (*Session, error) {
 	// Get the cookie from the request
 	cookie, err := r.Cookie("session")
 	if err != nil {
@@ -218,7 +218,7 @@ func GetRequestSession(r *http.Request) (*WebSession, error) {
 	return session, nil
 }
 
-func RefreshRequestSession(w http.ResponseWriter, r *http.Request) *WebSession {
+func RefreshRequestSession(w http.ResponseWriter, r *http.Request) *Session {
 	// Get the session from the request
 	session, err := GetAndVerifySession(r)
 	if err != nil {
@@ -229,16 +229,16 @@ func RefreshRequestSession(w http.ResponseWriter, r *http.Request) *WebSession {
 
 }
 
-func RefreshNewRequestSession(w http.ResponseWriter, r *http.Request) *WebSession {
+func RefreshNewRequestSession(w http.ResponseWriter, r *http.Request) *Session {
 	session, _ := GetAndVerifySession(r)
 	return refreshNewRequestSession(w, GetRealIPFromRequest(r), GetClientSignature(r), session)
 }
 
-func ClearRequestSession(w http.ResponseWriter, r *http.Request) *WebSession {
+func ClearRequestSession(w http.ResponseWriter, r *http.Request) *Session {
 	return refreshNewRequestSession(w, GetRealIPFromRequest(r), GetClientSignature(r), nil)
 }
 
-func (sess WebSession) GetAge() time.Duration {
+func (sess Session) GetAge() time.Duration {
 	return time.Since(sess.GenerateTime)
 }
 
@@ -253,7 +253,7 @@ func HashToIdHexString(message string) string {
 	return string(hex.EncodeToString(idbytes[:12]))
 }
 
-func (sess *WebSession) GenerateHashBytes(message string) [32]byte {
+func (sess *Session) GenerateHashBytes(message string) [32]byte {
 	if message == "" {
 		message = "0"
 	}
@@ -262,7 +262,7 @@ func (sess *WebSession) GenerateHashBytes(message string) [32]byte {
 	return sha256.Sum256([]byte(sess.ID.Hex() + sess.SecretToken + sess.GenerateFrom.Hex() + message))
 }
 
-func (sess *WebSession) GenerateHexID(message string) string {
+func (sess *Session) GenerateHexID(message string) string {
 	if sess == nil {
 		return primitive.NilObjectID.Hex()
 	}
@@ -270,11 +270,11 @@ func (sess *WebSession) GenerateHexID(message string) string {
 	return string(hex.EncodeToString(idbytes[:12]))
 }
 
-func (sess *WebSession) GenerateSessionToken() string {
+func (sess *Session) GenerateSessionToken() string {
 	return sess.GenerateHexID("session_token")
 }
 
-func (sess *WebSession) GenerateTokenFromSalt(salt string) string {
+func (sess *Session) GenerateTokenFromSalt(salt string) string {
 	sessToken := sess.GenerateSessionToken()
 	return GenerateTokenFromSalt(sessToken, salt)
 }

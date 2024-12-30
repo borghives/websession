@@ -44,7 +44,7 @@ func (e *WebSessionError) ClientMismatch() bool {
 
 // VerifySession verifies that the session is valid
 
-func GetAndVerifySession(r *http.Request) (*WebSession, error) {
+func GetAndVerifySession(r *http.Request) (*Session, error) {
 	// Get the session from the request
 	var sessionError *WebSessionError
 	session, err := GetRequestSession(r)
