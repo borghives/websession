@@ -1,5 +1,5 @@
 module github.com/borghives/websession
 
-go 1.23.4
+go 1.25.4
 
-require go.mongodb.org/mongo-driver v1.17.3
+require go.mongodb.org/mongo-driver v1.17.6
