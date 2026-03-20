@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type RutimeHostInfo struct {
-	Id         primitive.ObjectID `bson:"_id"`
+	Id         bson.ObjectID `bson:"_id"`
 	BuildId    string             `bson:"build_id"`
 	ImageId    string             `bson:"image_id"`
 	AppName    string             `bson:"app_name"`
@@ -47,7 +47,7 @@ func GetHostInfo() RutimeHostInfo {
 
 func getHostInfo() RutimeHostInfo {
 	return RutimeHostInfo{
-		Id:         primitive.NewObjectID(),
+		Id:         bson.NewObjectID(),
 		BuildId:    os.Getenv("BUILD_ID"),
 		ImageId:    os.Getenv("IMAGE_DIGEST"),
 		AppName:    os.Getenv("APP_NAME"),

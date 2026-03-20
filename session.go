@@ -10,20 +10,19 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 var WEB_SESSION_TTL = time.Hour * 12
 
 type Session struct {
-	ID           primitive.ObjectID `xml:"-" json:"-" bson:"_id,omitempty"`
+	ID           bson.ObjectID `xml:"-" json:"-" bson:"_id,omitempty"`
 	FromIp       string             `xml:"-" json:"-" bson:"ip"`
 	GenerateTime time.Time          `xml:"-" json:"-" bson:"gen_tm"`
-	GenerateFrom primitive.ObjectID `xml:"-" json:"-" bson:"gen_frm"`
-	FirstID      primitive.ObjectID `xml:"-" json:"-" bson:"frst_id"`
+	GenerateFrom bson.ObjectID `xml:"-" json:"-" bson:"gen_frm"`
+	FirstID      bson.ObjectID `xml:"-" json:"-" bson:"frst_id"`
 	FirstTime    time.Time          `xml:"-" json:"-" bson:"frst_tm"`
-	UserId       primitive.ObjectID `xml:"-" json:"-" bson:"user_id,omitempty"`
+	UserId       bson.ObjectID `xml:"-" json:"-" bson:"user_id,omitempty"`
 	UserName     string             `xml:"-" json:"-" bson:"user_name,omitempty"`
 	SecretToken  string             `xml:"-" json:"-" bson:"secret_token"`
 	ClientHash   string             `xml:"-" json:"-" bson:"client_hash"`
@@ -32,7 +31,7 @@ type Session struct {
 
 func newWebSession(realIP string, clientSignature string) *Session {
 	currentTime := time.Now()
-	id := primitive.NewObjectIDFromTimestamp(currentTime)
+	id := bson.NewObjectIDFromTimestamp(currentTime)
 	clientHash := HashToIdHexString(clientSignature)
 	return &Session{
 		ID:           id,
@@ -48,7 +47,7 @@ func newWebSession(realIP string, clientSignature string) *Session {
 func refreshWebSession(realIP string, clientSignature string, oldSession *Session) *Session {
 	clientHash := HashToIdHexString(clientSignature)
 	return &Session{
-		ID:           primitive.NewObjectID(),
+		ID:           bson.NewObjectID(),
 		FromIp:       realIP,
 		GenerateTime: time.Now(),
 		GenerateFrom: oldSession.ID,
@@ -244,7 +243,7 @@ func (sess Session) GetAge() time.Duration {
 
 func HashToIdHexString(message string) string {
 	if message == "" {
-		return primitive.NilObjectID.Hex()
+		return bson.NilObjectID.Hex()
 	}
 
 	//convert string to bytes
@@ -264,7 +263,7 @@ func (sess *Session) GenerateHashBytes(message string) [32]byte {
 
 func (sess *Session) GenerateHexID(message string) string {
 	if sess == nil {
-		return primitive.NilObjectID.Hex()
+		return bson.NilObjectID.Hex()
 	}
 	idbytes := sess.GenerateHashBytes(message)
 	return string(hex.EncodeToString(idbytes[:12]))

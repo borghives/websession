@@ -11,7 +11,7 @@ var SESSION_ERROR_NO_SESSION = 1 << 1
 var SESSION_ERROR_DECODING_FAILED = 1 << 2
 var SESSION_ERROR_SESSION_EXPIRED = 1 << 3
 var SESSION_ERROR_IP_MISMATCH = 1 << 4
-var SESSION_ERROR_CLIENT_MISMATCH = 1 << 4
+var SESSION_ERROR_CLIENT_MISMATCH = 1 << 5
 
 type WebSessionError struct {
 	Message string
@@ -70,11 +70,11 @@ func GetAndVerifySession(r *http.Request) (*Session, error) {
 		sessionError.Code |= SESSION_ERROR_SESSION_EXPIRED
 	}
 
-	// realip := GetRealIPFromRequest(r)
-	// if realip != string(session.FromIp) {
-	// 	sessionError.Message += "IP mismatch; "
-	// 	sessionError.Code |= SESSION_ERROR_IP_MISMATCH
-	// }
+	realip := GetRealIPFromRequest(r)
+	if realip != string(session.FromIp) {
+		sessionError.Message += "IP mismatch; "
+		sessionError.Code |= SESSION_ERROR_IP_MISMATCH
+	}
 
 	client := GetClientSignature(r)
 	clientHash := HashToIdHexString(client)

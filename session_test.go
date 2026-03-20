@@ -4,17 +4,22 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"os"
 	"testing"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
+
+func init() {
+	os.Setenv("SECRET_SESSION", "test_secret")
+}
 
 func TestNewWebSession(t *testing.T) {
 	r, _ := http.NewRequest("GET", "/", nil)
 	r.Header.Set("X-Forwarded-For", "1.2.3.4")
 	r.Header.Set("X-Real-IP", "localhost")
 	session := newWebSession(GetRealIPFromRequest(r), GetClientSignature(r))
-	if session.ID == primitive.NilObjectID {
+	if session.ID == bson.NilObjectID {
 		t.Errorf("NewWebSession: expected session ID to be non-nil")
 	}
 	if session.GenerateTime.IsZero() {
@@ -193,14 +198,14 @@ func TestSetNewRequestSession(t *testing.T) {
 
 	if session != nil {
 		// Check that the session is valid
-		if session.ID == primitive.NilObjectID {
+		if session.ID == bson.NilObjectID {
 			t.Errorf("setNewRequestSession: expected session ID to be non-nil")
 		}
 		if session.GenerateTime.IsZero() {
 			t.Errorf("setNewRequestSession: expected session GenerateTime to be non-zero")
 		}
 
-		if session.GenerateFrom != primitive.NilObjectID {
+		if session.GenerateFrom != bson.NilObjectID {
 			t.Errorf("setNewRequestSession: expected session GenerateFrom to be nil")
 		}
 		if session.FirstTime.IsZero() {
