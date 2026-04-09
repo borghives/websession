@@ -2,7 +2,10 @@ module github.com/borghives/websession
 
 go 1.26.1
 
-require go.mongodb.org/mongo-driver/v2 v2.5.0
+require (
+	github.com/borghives/kosmos-go v1.0.2
+	go.mongodb.org/mongo-driver/v2 v2.5.0
+)
 
 require (
 	cloud.google.com/go/auth v0.19.0 // indirect
@@ -10,7 +13,6 @@ require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/iam v1.7.0 // indirect
 	cloud.google.com/go/secretmanager v1.17.0 // indirect
-	github.com/borghives/kosmos-go v0.9.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
