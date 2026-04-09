@@ -1,8 +1,11 @@
 package websession
 
 import (
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -10,31 +13,83 @@ import (
 	"strings"
 	"time"
 
+	"github.com/borghives/kosmos-go"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 var WEB_SESSION_TTL = time.Hour * 12
 
 type Session struct {
-	ID           bson.ObjectID `xml:"-" json:"-" bson:"_id,omitempty"`
-	FromIp       string             `xml:"-" json:"-" bson:"ip"`
-	GenerateTime time.Time          `xml:"-" json:"-" bson:"gen_tm"`
-	GenerateFrom bson.ObjectID `xml:"-" json:"-" bson:"gen_frm"`
-	FirstID      bson.ObjectID `xml:"-" json:"-" bson:"frst_id"`
-	FirstTime    time.Time          `xml:"-" json:"-" bson:"frst_tm"`
-	UserId       bson.ObjectID `xml:"-" json:"-" bson:"user_id,omitempty"`
-	UserName     string             `xml:"-" json:"-" bson:"user_name,omitempty"`
-	SecretToken  string             `xml:"-" json:"-" bson:"secret_token"`
-	ClientHash   string             `xml:"-" json:"-" bson:"client_hash"`
-	ClientSig    string             `xml:"-" json:"-" bson:"-"`
+	kosmos.BaseModel `bson:",inline" kosmos:"session_info"`
+	FromIp           string        `xml:"-" json:"-" bson:"ip"`
+	GenerateTime     time.Time     `xml:"-" json:"-" bson:"gen_tm"`
+	GenerateFrom     bson.ObjectID `xml:"-" json:"-" bson:"gen_frm"`
+	FirstID          bson.ObjectID `xml:"-" json:"-" bson:"frst_id"`
+	FirstTime        time.Time     `xml:"-" json:"-" bson:"frst_tm"`
+	UserId           bson.ObjectID `xml:"-" json:"-" bson:"user_id,omitempty"`
+	UserName         string        `xml:"-" json:"-" bson:"user_name,omitempty"`
+	SecretToken      string        `xml:"-" json:"-" bson:"secret_token"`
+	ClientHash       string        `xml:"-" json:"-" bson:"client_hash"`
+	ClientSig        string        `xml:"-" json:"-" bson:"-"` // Not encoded in BSON due to tag
 }
 
-func newWebSession(realIP string, clientSignature string) *Session {
+// SessionManager centralizes configuration and behavior for websessions
+type SessionManager struct {
+	Secret         string
+	Domain         string
+	CookieName     string
+	TTL            time.Duration
+	TrustedProxies []string
+	SkipClientHash bool // Allows disabling strict User-Agent validation
+}
+
+// DefaultManager creates a standard SessionManager using env variables,
+// provided for backward compatibility.
+func DefaultManager() *SessionManager {
+	secret := os.Getenv("SECRET_SESSION")
+	if secret == "" {
+		log.Fatal("FATAL: CANNOT FIND SECRET_SESSION")
+	}
+	domain := os.Getenv("SITE_DOMAIN")
+	if domain == "" {
+		domain = "localhost"
+	}
+	manager, _ := NewSessionManager(secret, domain)
+	return manager
+}
+
+// NewSessionManager creates a new session manager
+func NewSessionManager(secret string, domain string) (*SessionManager, error) {
+	if secret == "" {
+		return nil, errors.New("missing secret for SessionManager")
+	}
+	if domain == "" {
+		domain = "localhost"
+	}
+
+	proxies := []string{"127.0.0.1", "::1", "localhost"}
+	if os.Getenv("K_SERVICE") != "" {
+		// Automatically trust the environment if running securely inside Cloud Run
+		proxies = append(proxies, "*")
+	}
+
+	return &SessionManager{
+		Secret:         secret,
+		Domain:         domain,
+		CookieName:     "session",
+		TTL:            WEB_SESSION_TTL,
+		TrustedProxies: proxies,
+	}, nil
+}
+
+func (m *SessionManager) NewWebSession(realIP string, clientSignature string) *Session {
 	currentTime := time.Now()
-	id := bson.NewObjectIDFromTimestamp(currentTime)
+	id := SecureObjectID()
 	clientHash := HashToIdHexString(clientSignature)
 	return &Session{
-		ID:           id,
+		BaseModel: kosmos.BaseModel{
+			ID: id,
+		},
 		FromIp:       realIP,
 		GenerateTime: currentTime,
 		FirstID:      id,
@@ -44,10 +99,12 @@ func newWebSession(realIP string, clientSignature string) *Session {
 	}
 }
 
-func refreshWebSession(realIP string, clientSignature string, oldSession *Session) *Session {
+func (m *SessionManager) RefreshWebSession(realIP string, clientSignature string, oldSession *Session) *Session {
 	clientHash := HashToIdHexString(clientSignature)
 	return &Session{
-		ID:           bson.NewObjectID(),
+		BaseModel: kosmos.BaseModel{
+			ID: SecureObjectID(),
+		},
 		FromIp:       realIP,
 		GenerateTime: time.Now(),
 		GenerateFrom: oldSession.ID,
@@ -58,34 +115,16 @@ func refreshWebSession(realIP string, clientSignature string, oldSession *Sessio
 	}
 }
 
-func getSessionSecret() string {
-	secret := os.Getenv("SECRET_SESSION")
-	if secret == "" {
-		log.Fatal("FATAL: CANNOT FIND SECRET_SESSION")
-	}
-	return secret
-}
-
-// fatal if cannot secure session
-func SessionInitCheck() {
-	if getSessionSecret() == "" {
-		log.Fatal("FATAL: CANNOT FIND SECRET_SESSION")
-	}
-}
-
-func EncodeSession(session Session) (string, error) {
-	//empty client sig only encrypting client hash
-	session.ClientSig = ""
-
+func (m *SessionManager) EncodeSession(session Session) (string, error) {
 	encodedBytes, err := bson.Marshal(session)
 	if err != nil {
 		return "", err
 	}
-	return EncryptMessage(getSessionSecret(), encodedBytes)
+	return EncryptMessage(m.Secret, encodedBytes)
 }
 
-func DecodeSession(encodedSession string) (*Session, error) {
-	decodedBytes, err := DecryptMessage(getSessionSecret(), encodedSession)
+func (m *SessionManager) DecodeSession(encodedSession string) (*Session, error) {
+	decodedBytes, err := DecryptMessage(m.Secret, encodedSession)
 	if err != nil {
 		return nil, err
 	}
@@ -94,97 +133,82 @@ func DecodeSession(encodedSession string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return &session, nil
 }
 
-// getRealIPFromRequest extracts the client's real IP address from http.Request
-func GetRealIPFromRequest(r *http.Request) string {
-	// Check the X-Forwarded-For header first
-	xForwardedFor := r.Header.Get("X-Forwarded-For")
-	if xForwardedFor != "" {
-		// This header can contain multiple IPs separated by comma
-		// The first one in the list is the original client IP
-		parts := strings.Split(xForwardedFor, ",")
-		for i, p := range parts {
-			parts[i] = strings.TrimSpace(p)
+// isTrustedProxy checks if an IP is in the proxy trusted list (or wildcard)
+func (m *SessionManager) isTrustedProxy(ip string) bool {
+	for _, proxy := range m.TrustedProxies {
+		if proxy == "*" || proxy == ip {
+			return true
 		}
-		// log.Printf("X-Forwarded-For: %v", parts)
-		return parts[0]
 	}
-
-	// If X-Forwarded-For is empty, check the X-Real-IP header
-	xRealIP := r.Header.Get("X-Real-IP")
-	if xRealIP != "" {
-		ip := strings.TrimSpace(xRealIP)
-		log.Printf("X-Real-IP: %v", ip)
-		return ip
-	}
-
-	// If neither header is present, use the remote address from the request
-	// This might be the IP of a proxy or load balancer
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	return ip
+	return false
 }
 
-// getClientSignature extracts the client's browser signature from http.Request
+func (m *SessionManager) GetRealIPFromRequest(r *http.Request) string {
+	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		remoteIP = r.RemoteAddr // fallback
+	}
+
+	if m.isTrustedProxy(remoteIP) {
+		xForwardedFor := r.Header.Get("X-Forwarded-For")
+		if xForwardedFor != "" {
+			parts := strings.Split(xForwardedFor, ",")
+			// In GCP Cloud Run, the Google Front End (GFE) appends the true client IP
+			// securely to the end. Therefore, we should extract the right-most element
+			// rather than parts[0], which could be maliciously spoofed by headers.
+			return strings.TrimSpace(parts[len(parts)-1])
+		}
+
+		xRealIP := r.Header.Get("X-Real-IP")
+		if xRealIP != "" {
+			return strings.TrimSpace(xRealIP)
+		}
+	}
+	return remoteIP
+}
+
 func GetClientSignature(r *http.Request) string {
 	return r.Header.Get("User-Agent")
 }
 
-func GetDomain() string {
-	domain := os.Getenv("SITE_DOMAIN")
-	if domain == "" {
-		domain = "localhost"
-	}
-	return domain
-}
-
-func setNewRequestSession(w http.ResponseWriter, realIP string, clientSignature string) *Session {
-
-	// Create a new session
-	session := newWebSession(realIP, clientSignature)
-	SetSessionCookie(w, session)
+func (m *SessionManager) SetNewRequestSession(w http.ResponseWriter, realIP string, clientSignature string) *Session {
+	session := m.NewWebSession(realIP, clientSignature)
+	m.SetSessionCookie(w, session)
 	return session
 }
 
-func refreshNewRequestSession(w http.ResponseWriter, realIP string, clientSignature string, oldSession *Session) *Session {
-	// Create a new session
+func (m *SessionManager) RefreshNewRequestSession(w http.ResponseWriter, realIP string, clientSignature string, oldSession *Session) *Session {
 	if oldSession == nil {
-		return setNewRequestSession(w, realIP, clientSignature)
+		return m.SetNewRequestSession(w, realIP, clientSignature)
 	}
-
-	session := refreshWebSession(realIP, clientSignature, oldSession)
-	SetSessionCookie(w, session)
+	session := m.RefreshWebSession(realIP, clientSignature, oldSession)
+	m.SetSessionCookie(w, session)
 	return session
 }
 
-func SetSessionCookie(w http.ResponseWriter, session *Session) error {
-	domain := GetDomain()
-
-	// Create a new session
-	encodedSess, err := EncodeSession(*session)
+func (m *SessionManager) SetSessionCookie(w http.ResponseWriter, session *Session) error {
+	encodedSess, err := m.EncodeSession(*session)
 	if err != nil {
 		return err
 	}
-	// Create a new cookie
-	cookie := http.Cookie{
-		Name:     "session",
-		Value:    encodedSess,
-		Path:     "/",     // The cookie is accessible on all paths
-		Domain:   domain,  // Accessible by mypierian.com and all its subdomains
-		MaxAge:   1469000, // Expires after ~17 days
-		HttpOnly: true,    // Not accessible via JavaScript
-	}
 
-	// Set the cookie in the response header
+	cookie := http.Cookie{
+		Name:     m.CookieName,
+		Value:    encodedSess,
+		Path:     "/",
+		Domain:   m.Domain,
+		MaxAge:   int(m.TTL.Seconds()),
+		HttpOnly: true,
+	}
 	http.SetCookie(w, &cookie)
 	return nil
 }
 
-func GetRequestSession(r *http.Request) (*Session, error) {
-	// Get the cookie from the request
-	cookie, err := r.Cookie("session")
+func (m *SessionManager) GetRequestSession(r *http.Request) (*Session, error) {
+	cookie, err := r.Cookie(m.CookieName)
 	if err != nil {
 		return nil, &WebSessionError{
 			Message: "no session found; ",
@@ -192,8 +216,7 @@ func GetRequestSession(r *http.Request) (*Session, error) {
 		}
 	}
 
-	// Decode the cookie value
-	session, err := DecodeSession(cookie.Value)
+	session, err := m.DecodeSession(cookie.Value)
 	if err != nil {
 		return nil, &WebSessionError{
 			Message: "failed to decode session; ",
@@ -204,37 +227,72 @@ func GetRequestSession(r *http.Request) (*Session, error) {
 	clientSignature := GetClientSignature(r)
 	clientHash := HashToIdHexString(clientSignature)
 
-	if clientHash == session.ClientHash {
-		session.ClientSig = clientSignature
-	} else {
-		err = &WebSessionError{
-			Message: "failed to assign client with hash mismatch; ",
-			Code:    SESSION_ERROR_CLIENT_MISMATCH,
+	if !m.SkipClientHash {
+		if clientHash == session.ClientHash {
+			session.ClientSig = clientSignature
+		} else {
+			err = &WebSessionError{
+				Message: "failed to assign client with hash mismatch; ",
+				Code:    SESSION_ERROR_CLIENT_MISMATCH,
+			}
 		}
+	} else {
+		session.ClientSig = clientSignature
 	}
 
-	// Return the decoded session
-	return session, nil
+	return session, err
 }
 
-func RefreshRequestSession(w http.ResponseWriter, r *http.Request) *Session {
-	// Get the session from the request
-	session, err := GetAndVerifySession(r)
+func (m *SessionManager) GetAndVerifySession(r *http.Request) (*Session, error) {
+	var sessionError *WebSessionError
+	session, err := m.GetRequestSession(r)
+
 	if err != nil {
-		return refreshNewRequestSession(w, GetRealIPFromRequest(r), GetClientSignature(r), session)
+		errors.As(err, &sessionError)
+	}
+	if sessionError == nil {
+		sessionError = &WebSessionError{}
 	}
 
+	if session == nil {
+		sessionError.Message += "Session Empty; "
+		sessionError.Code |= SESSION_ERROR_NO_SESSION
+		return session, sessionError
+	}
+
+	if session.GetAge() > m.TTL {
+		sessionError.Message += "Session expired; "
+		sessionError.Code |= SESSION_ERROR_SESSION_EXPIRED
+	}
+
+	realip := m.GetRealIPFromRequest(r)
+	if realip != string(session.FromIp) {
+		sessionError.Message += "IP mismatch; "
+		sessionError.Code |= SESSION_ERROR_IP_MISMATCH
+	}
+
+	if sessionError.Code == 0 {
+		return session, nil
+	}
+
+	return session, sessionError
+}
+
+func (m *SessionManager) RefreshRequestSession(w http.ResponseWriter, r *http.Request) *Session {
+	session, err := m.GetAndVerifySession(r)
+	if err != nil {
+		return m.RefreshNewRequestSession(w, m.GetRealIPFromRequest(r), GetClientSignature(r), session)
+	}
 	return session
-
 }
 
-func RefreshNewRequestSession(w http.ResponseWriter, r *http.Request) *Session {
-	session, _ := GetAndVerifySession(r)
-	return refreshNewRequestSession(w, GetRealIPFromRequest(r), GetClientSignature(r), session)
+func (m *SessionManager) RefreshRequestSessionFromContext(w http.ResponseWriter, r *http.Request) *Session {
+	session, _ := m.GetAndVerifySession(r)
+	return m.RefreshNewRequestSession(w, m.GetRealIPFromRequest(r), GetClientSignature(r), session)
 }
 
-func ClearRequestSession(w http.ResponseWriter, r *http.Request) *Session {
-	return refreshNewRequestSession(w, GetRealIPFromRequest(r), GetClientSignature(r), nil)
+func (m *SessionManager) ClearRequestSession(w http.ResponseWriter, r *http.Request) *Session {
+	return m.RefreshNewRequestSession(w, m.GetRealIPFromRequest(r), GetClientSignature(r), nil)
 }
 
 func (sess Session) GetAge() time.Duration {
@@ -245,27 +303,25 @@ func HashToIdHexString(message string) string {
 	if message == "" {
 		return bson.NilObjectID.Hex()
 	}
-
-	//convert string to bytes
 	idbytes := sha256.Sum256([]byte(message))
-	//convert bytes to hex string
-	return string(hex.EncodeToString(idbytes[:12]))
+	return hex.EncodeToString(idbytes[:12])
 }
 
-func (sess *Session) GenerateHashBytes(message string) [32]byte {
+// GenerateHMACBytes creates a cryptographic map utilizing HMAC to prevent length extension attacks.
+func (sess *Session) GenerateHMACBytes(message string) []byte {
 	if message == "" {
 		message = "0"
 	}
-
-	//convert string to bytes
-	return sha256.Sum256([]byte(sess.ID.Hex() + sess.SecretToken + sess.GenerateFrom.Hex() + message))
+	mac := hmac.New(sha256.New, []byte(sess.SecretToken))
+	mac.Write([]byte(sess.ID.Hex() + sess.GenerateFrom.Hex() + message))
+	return mac.Sum(nil)
 }
 
 func (sess *Session) GenerateHexID(message string) string {
 	if sess == nil {
 		return bson.NilObjectID.Hex()
 	}
-	idbytes := sess.GenerateHashBytes(message)
+	idbytes := sess.GenerateHMACBytes(message)
 	return string(hex.EncodeToString(idbytes[:12]))
 }
 
@@ -288,5 +344,31 @@ func GenerateTokenFromSeed(sessToken string, saltSeed string, message string) st
 }
 
 func GenerateTokenFromSalt(sessToken string, salt string) string {
+	// Standard hash is fine here due to fixed size strings
 	return HashToIdHexString(sessToken + "-_" + salt)
+}
+
+func SecureObjectID() bson.ObjectID {
+	var randomBytes [12]byte
+	_, err := rand.Read(randomBytes[:])
+	if err != nil {
+		panic(err)
+	}
+	return bson.ObjectID(randomBytes)
+}
+
+// Below are standard export aliases that keep global compatibility.
+// These exist so older code doesn't break, they construct/use the DefaultManager().
+
+func GetRealIPFromRequest(r *http.Request) string {
+	return DefaultManager().GetRealIPFromRequest(r)
+}
+func EncodeSession(session Session) (string, error) {
+	return DefaultManager().EncodeSession(session)
+}
+func DecodeSession(encoded string) (*Session, error) {
+	return DefaultManager().DecodeSession(encoded)
+}
+func GetAndVerifySession(r *http.Request) (*Session, error) {
+	return DefaultManager().GetAndVerifySession(r)
 }

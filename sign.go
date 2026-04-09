@@ -9,11 +9,15 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"io"
 	"log"
 	"math/big"
 )
 
+// DEPRECATED: Generating an ECDSA key deterministically using a constant reader
+// is NOT secure due to the strict entropy requirements of elliptic curves.
+// This function exists for backward compatibility but should not be used in new code.
 func GenerateKeyFromSecret(secret string) *ecdsa.PrivateKey {
 	// Hash the secret string to get a fixed size seed
 	hash := sha256.Sum256([]byte(secret))
@@ -86,16 +90,22 @@ func EncryptMessage(secret string, message []byte) (string, error) {
 
 	// Encrypt and concatenate nonce
 	cipherText := gcm.Seal(nonce, nonce, message, nil)
-	return base64.StdEncoding.EncodeToString(cipherText), nil
+	// Use RawURLEncoding to avoid special chars (+, /, =) in cookies
+	return base64.RawURLEncoding.EncodeToString(cipherText), nil
 }
 
 // Decrypts a message using AES-GCM with the given key
 func DecryptMessage(secret string, encryptedMessage string) ([]byte, error) {
 	key := sha256.Sum256([]byte(secret))
 
-	cipherText, err := base64.StdEncoding.DecodeString(encryptedMessage)
+	// Decode using RawURLEncoding (or fallback to StdEncoding for backwards compatibility)
+	cipherText, err := base64.RawURLEncoding.DecodeString(encryptedMessage)
 	if err != nil {
-		return nil, err
+		// Fallback for older sessions
+		cipherText, err = base64.StdEncoding.DecodeString(encryptedMessage)
+		if err != nil {
+			return nil, errors.New("failed to decode base64")
+		}
 	}
 
 	block, err := aes.NewCipher(key[:])
@@ -112,7 +122,7 @@ func DecryptMessage(secret string, encryptedMessage string) ([]byte, error) {
 	// Extract nonce
 	nonceSize := gcm.NonceSize()
 	if len(cipherText) < nonceSize {
-		return nil, err
+		return nil, errors.New("ciphertext too short")
 	}
 	nonce, cipherText := cipherText[:nonceSize], cipherText[nonceSize:]
 
@@ -123,7 +133,7 @@ func DecryptMessage(secret string, encryptedMessage string) ([]byte, error) {
 // function to get 12 random bytes in hex string
 // returned empty string if error
 func GetRandomHexString() string {
-	b := make([]byte, 12)
+	b := make([]byte, 12) // 12 bytes = 24 hex chars
 	if _, err := rand.Read(b); err != nil {
 		return ""
 	}
