@@ -1,6 +1,10 @@
 package websession
 
-import "github.com/borghives/kosmos-go/ether"
+import (
+	"log"
+
+	"github.com/borghives/kosmos-go/ether"
+)
 
 type Constants struct {
 	SecretSession string `mapstructure:"SECRET_SESSION"`
@@ -13,6 +17,9 @@ func CollapseConstants() Constants {
 	constants := EtherialConstants.Collapse()
 	if constants.SiteDomain == "" {
 		constants.SiteDomain = "localhost"
+	}
+	if constants.SecretSession == "" {
+		log.Fatal("missing secret for SessionManager")
 	}
 	return constants
 }
