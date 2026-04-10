@@ -5,19 +5,17 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
-	"go.mongodb.org/mongo-driver/v2/bson"
+	"github.com/borghives/kosmos-go"
 )
 
 type RutimeHostInfo struct {
-	Id         bson.ObjectID `bson:"_id"`
-	BuildId    string             `bson:"build_id"`
-	ImageId    string             `bson:"image_id"`
-	AppName    string             `bson:"app_name"`
-	AppCommand string             `bson:"app_command"`
-	EventAt    time.Time          `bson:"event_at"`
-	EnvVars    []string           `bson:"env_vars"`
+	kosmos.BaseModel `bson:",inline" kosmos:"hostinfo"`
+	BuildId          string   `bson:"build_id"`
+	ImageId          string   `bson:"image_id"`
+	AppName          string   `bson:"app_name"`
+	AppCommand       string   `bson:"app_command"`
+	EnvVars          []string `bson:"env_vars"`
 }
 
 func getNonSecretEnvVars() []string {
@@ -26,7 +24,8 @@ func getNonSecretEnvVars() []string {
 		//exclude secrets
 		if !strings.HasPrefix(env, "CSRF_LATEST") &&
 			!strings.HasPrefix(env, "SESSION_LATEST") &&
-			!strings.HasPrefix(env, "SECRET_") {
+			!strings.HasPrefix(env, "SECRET_") &&
+			!strings.Contains(env, "SECRET") {
 			envVars = append(envVars, env)
 		}
 	}
@@ -46,22 +45,22 @@ func GetHostInfo() RutimeHostInfo {
 }
 
 func getHostInfo() RutimeHostInfo {
-	return RutimeHostInfo{
-		Id:         bson.NewObjectID(),
+	retval := RutimeHostInfo{
 		BuildId:    os.Getenv("BUILD_ID"),
 		ImageId:    os.Getenv("IMAGE_DIGEST"),
 		AppName:    os.Getenv("APP_NAME"),
 		AppCommand: strings.Join(os.Args, " "),
 		EnvVars:    getNonSecretEnvVars(),
-		EventAt:    time.Now(),
 	}
+	retval.CollapseID()
+	return retval
 }
 
 func GetAllowedHosts() map[string]bool {
 	// Determine allowed hosts for HTTP service.
 	var allowedHosts = map[string]bool{}
 	envAllowHosts := os.Getenv("ALLOW_HOSTS")
-	for _, host := range strings.Split(envAllowHosts, " ") {
+	for host := range strings.SplitSeq(envAllowHosts, " ") {
 		allowedHosts[host] = true
 		log.Printf("Has allow host: %s", host)
 	}
