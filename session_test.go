@@ -8,18 +8,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/borghives/kosmos-go"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 func init() {
 	os.Setenv("SECRET_SESSION", "test_secret")
+	kosmos.IgniteBase(nil)
 }
 
 func getTestManager() *SessionManager {
-	manager, err := NewSessionManager("test_secret", "localhost")
-	if err != nil {
-		panic(err)
-	}
+	manager := Manager()
 	manager.TrustedProxies = append(manager.TrustedProxies, "1.2.3.4")
 	return manager
 }
@@ -27,10 +26,11 @@ func getTestManager() *SessionManager {
 func TestNewWebSession(t *testing.T) {
 	manager := getTestManager()
 	r, _ := http.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "127.0.0.1:80"
 	r.Header.Set("X-Forwarded-For", "1.2.3.4")
 	r.Header.Set("X-Real-IP", "localhost")
-	
-	session := manager.NewWebSession(manager.GetRealIPFromRequest(r), GetClientSignature(r))
+
+	session := manager.CreateSession(r)
 	if session.ID == bson.NilObjectID {
 		t.Errorf("NewWebSession: expected session ID to be non-nil")
 	}
@@ -49,11 +49,12 @@ func TestNewWebSession(t *testing.T) {
 func TestRefreshWebSession(t *testing.T) {
 	manager := getTestManager()
 	r, _ := http.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "127.0.0.1:80"
 	r.Header.Set("X-Forwarded-For", "1.2.3.4")
 	r.Header.Set("X-Real-IP", "localhost")
 
-	session := manager.NewWebSession(manager.GetRealIPFromRequest(r), GetClientSignature(r))
-	newSession := manager.RefreshWebSession(manager.GetRealIPFromRequest(r), GetClientSignature(r), session)
+	session := manager.CreateSession(r)
+	newSession := RefreshWebSession(manager.GetRealIPFromRequest(r), GetClientSignature(r), session)
 	if newSession.ID == session.ID {
 		t.Errorf("RefreshWebSession: expected new session ID to be different from old session ID")
 	}
@@ -72,7 +73,7 @@ func TestRefreshWebSession(t *testing.T) {
 func TestEncodeSession(t *testing.T) {
 	manager := getTestManager()
 	r, _ := http.NewRequest("GET", "/", nil)
-	session := manager.NewWebSession(manager.GetRealIPFromRequest(r), GetClientSignature(r))
+	session := NewWebSession(manager.GetRealIPFromRequest(r), GetClientSignature(r))
 	encodedSession, err := manager.EncodeSession(*session)
 	if err != nil {
 		t.Errorf("EncodeSession: expected no error, got %v", err)
@@ -85,10 +86,11 @@ func TestEncodeSession(t *testing.T) {
 func TestDecodeSession(t *testing.T) {
 	manager := getTestManager()
 	r, _ := http.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "127.0.0.1:80"
 	r.Header.Set("X-Forwarded-For", "1.2.3.4")
 	r.Header.Set("X-Real-IP", "localhost")
 
-	session := manager.NewWebSession(manager.GetRealIPFromRequest(r), GetClientSignature(r))
+	session := manager.CreateSession(r)
 	encodedSession, err := manager.EncodeSession(*session)
 	if err != nil {
 		t.Errorf("EncodeSession: expected no error, got %v", err)
@@ -117,13 +119,14 @@ func TestClientSignatureInSessionRequest(t *testing.T) {
 	manager := getTestManager()
 	userAgentStr := "Mozilla/5.0"
 	r, _ := http.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "127.0.0.1:80"
 	r.Header.Set("X-Forwarded-For", "1.2.3.4")
 	r.Header.Set("X-Real-IP", "localhost")
 	r.Header.Set("User-Agent", userAgentStr)
 	r.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
 	w := httptest.NewRecorder()
-	createdSession := manager.SetNewRequestSession(w, manager.GetRealIPFromRequest(r), GetClientSignature(r))
+	createdSession := manager.NewRequestSession(w, r)
 
 	r.AddCookie(w.Result().Cookies()[0])
 	returnedSession, err := manager.GetAndVerifySession(r)
@@ -169,10 +172,11 @@ func TestSetNewRequestSession(t *testing.T) {
 	manager := getTestManager()
 	w := httptest.NewRecorder()
 	r, _ := http.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "127.0.0.1:80"
 	r.Header.Set("X-Forwarded-For", "1.2.3.4")
 	r.Header.Set("X-Real-IP", "localhost")
 
-	createdSession := manager.SetNewRequestSession(w, manager.GetRealIPFromRequest(r), GetClientSignature(r))
+	createdSession := manager.NewRequestSession(w, r)
 
 	// Check that the cookie was set
 	cookies := w.Header().Get("Set-Cookie")
@@ -216,5 +220,57 @@ func TestSetNewRequestSession(t *testing.T) {
 		if createdSession.ID != session.ID {
 			t.Errorf("setNewRequestSession: expected created session ID to be equal to decoded session ID")
 		}
+	}
+}
+
+func TestRefreshStaleRequestSession(t *testing.T) {
+	manager := getTestManager()
+	w := httptest.NewRecorder()
+	r, _ := http.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "127.0.0.1:80"
+	r.Header.Set("X-Forwarded-For", "1.2.3.4")
+	r.Header.Set("X-Real-IP", "localhost")
+
+	createdSession := manager.NewRequestSession(w, r)
+	r.AddCookie(w.Result().Cookies()[0])
+
+	w2 := httptest.NewRecorder()
+	refreshedSession := manager.RefreshStaleRequestSession(w2, r)
+
+	if refreshedSession.ID != createdSession.ID {
+		t.Errorf("RefreshStaleRequestSession: expected session to not be refreshed if valid")
+	}
+
+	// now let's make it stale (modify cookie with bad value)
+	rBad, _ := http.NewRequest("GET", "/", nil)
+	rBad.Header.Set("X-Forwarded-For", "1.2.3.4")
+	rBad.AddCookie(&http.Cookie{Name: manager.CookieName, Value: "invalid_cookie"})
+	
+	w3 := httptest.NewRecorder()
+	newRefreshed := manager.RefreshStaleRequestSession(w3, rBad)
+	
+	if newRefreshed.ID == createdSession.ID {
+		t.Errorf("RefreshStaleRequestSession: expected session to be recreated if invalid")
+	}
+}
+
+func TestClearRequestSession(t *testing.T) {
+	manager := getTestManager()
+	w := httptest.NewRecorder()
+	r, _ := http.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "127.0.0.1:80"
+	r.Header.Set("X-Forwarded-For", "1.2.3.4")
+	r.Header.Set("X-Real-IP", "localhost")
+
+	createdSession := manager.NewRequestSession(w, r)
+	
+	w2 := httptest.NewRecorder()
+	clearedSession := manager.ClearRequestSession(w2, r)
+
+	if clearedSession.ID == createdSession.ID {
+		t.Errorf("ClearRequestSession: expected new session to have a different ID")
+	}
+	if clearedSession.GenerateFrom != bson.NilObjectID {
+		t.Errorf("ClearRequestSession: expected GenerateFrom to be nil (not refreshed from old session)")
 	}
 }

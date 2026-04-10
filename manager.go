@@ -13,25 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/borghives/kosmos-go"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 var WEB_SESSION_TTL = time.Hour * 12
-
-type Session struct {
-	kosmos.BaseModel `bson:",inline" kosmos:"session_info"`
-	FromIp           string        `xml:"-" json:"-" bson:"ip"`
-	GenerateTime     time.Time     `xml:"-" json:"-" bson:"gen_tm"`
-	GenerateFrom     bson.ObjectID `xml:"-" json:"-" bson:"gen_frm"`
-	FirstID          bson.ObjectID `xml:"-" json:"-" bson:"frst_id"`
-	FirstTime        time.Time     `xml:"-" json:"-" bson:"frst_tm"`
-	UserId           bson.ObjectID `xml:"-" json:"-" bson:"user_id,omitempty"`
-	UserName         string        `xml:"-" json:"-" bson:"user_name,omitempty"`
-	SecretToken      string        `xml:"-" json:"-" bson:"secret_token"`
-	ClientHash       string        `xml:"-" json:"-" bson:"client_hash"`
-	ClientSig        string        `xml:"-" json:"-" bson:"-"` // Not encoded in BSON due to tag
-}
 
 // SessionManager centralizes configuration and behavior for websessions
 type SessionManager struct {
@@ -43,28 +28,16 @@ type SessionManager struct {
 	SkipClientHash bool // Allows disabling strict User-Agent validation
 }
 
-// DefaultManager creates a standard SessionManager using env variables,
-// provided for backward compatibility.
-func DefaultManager() *SessionManager {
-	secret := os.Getenv("SECRET_SESSION")
+// Session Manager creates a new session manager
+func Manager() *SessionManager {
+	constants := CollapseConstants()
+	secret := constants.SecretSession
+	domain := constants.SiteDomain
 	if secret == "" {
-		log.Fatal("FATAL: CANNOT FIND SECRET_SESSION")
-	}
-	domain := os.Getenv("SITE_DOMAIN")
-	if domain == "" {
-		domain = "localhost"
-	}
-	manager, _ := NewSessionManager(secret, domain)
-	return manager
-}
-
-// NewSessionManager creates a new session manager
-func NewSessionManager(secret string, domain string) (*SessionManager, error) {
-	if secret == "" {
-		return nil, errors.New("missing secret for SessionManager")
+		log.Fatal("missing secret for SessionManager")
 	}
 	if domain == "" {
-		domain = "localhost"
+		log.Fatal("missing domain for SessionManager")
 	}
 
 	proxies := []string{"127.0.0.1", "::1", "localhost"}
@@ -79,40 +52,11 @@ func NewSessionManager(secret string, domain string) (*SessionManager, error) {
 		CookieName:     "session",
 		TTL:            WEB_SESSION_TTL,
 		TrustedProxies: proxies,
-	}, nil
-}
-
-func (m *SessionManager) NewWebSession(realIP string, clientSignature string) *Session {
-	currentTime := time.Now()
-	id := SecureObjectID()
-	clientHash := HashToIdHexString(clientSignature)
-	return &Session{
-		BaseModel: kosmos.BaseModel{
-			ID: id,
-		},
-		FromIp:       realIP,
-		GenerateTime: currentTime,
-		FirstID:      id,
-		FirstTime:    currentTime,
-		ClientHash:   clientHash,
-		SecretToken:  GetRandomHexString(),
 	}
 }
 
-func (m *SessionManager) RefreshWebSession(realIP string, clientSignature string, oldSession *Session) *Session {
-	clientHash := HashToIdHexString(clientSignature)
-	return &Session{
-		BaseModel: kosmos.BaseModel{
-			ID: SecureObjectID(),
-		},
-		FromIp:       realIP,
-		GenerateTime: time.Now(),
-		GenerateFrom: oldSession.ID,
-		FirstID:      oldSession.FirstID,
-		FirstTime:    oldSession.FirstTime,
-		ClientHash:   clientHash,
-		SecretToken:  GetRandomHexString(),
-	}
+func (m *SessionManager) CreateSession(r *http.Request) *Session {
+	return NewWebSession(m.GetRealIPFromRequest(r), GetClientSignature(r))
 }
 
 func (m *SessionManager) EncodeSession(session Session) (string, error) {
@@ -174,19 +118,38 @@ func GetClientSignature(r *http.Request) string {
 	return r.Header.Get("User-Agent")
 }
 
-func (m *SessionManager) SetNewRequestSession(w http.ResponseWriter, realIP string, clientSignature string) *Session {
-	session := m.NewWebSession(realIP, clientSignature)
+func (m *SessionManager) NewRequestSession(w http.ResponseWriter, r *http.Request) *Session {
+	session := m.CreateSession(r)
 	m.SetSessionCookie(w, session)
 	return session
 }
 
-func (m *SessionManager) RefreshNewRequestSession(w http.ResponseWriter, realIP string, clientSignature string, oldSession *Session) *Session {
-	if oldSession == nil {
-		return m.SetNewRequestSession(w, realIP, clientSignature)
+func (m *SessionManager) RefreshStaleRequestSession(w http.ResponseWriter, r *http.Request) *Session {
+	session, err := m.GetAndVerifySession(r)
+
+	if err != nil {
+		return m.RefreshRequestSessionFrom(w, r, session)
 	}
-	session := m.RefreshWebSession(realIP, clientSignature, oldSession)
+	return session
+}
+
+func (m *SessionManager) RefreshNewRequestSession(w http.ResponseWriter, r *http.Request) *Session {
+	session, _ := m.GetAndVerifySession(r)
+	return m.RefreshRequestSessionFrom(w, r, session)
+}
+
+func (m *SessionManager) RefreshRequestSessionFrom(w http.ResponseWriter, r *http.Request, oldSession *Session) *Session {
+	if oldSession == nil {
+		return m.NewRequestSession(w, r)
+	}
+
+	session := RefreshWebSession(m.GetRealIPFromRequest(r), GetClientSignature(r), oldSession)
 	m.SetSessionCookie(w, session)
 	return session
+}
+
+func (m *SessionManager) ClearRequestSession(w http.ResponseWriter, r *http.Request) *Session {
+	return m.RefreshRequestSessionFrom(w, r, nil)
 }
 
 func (m *SessionManager) SetSessionCookie(w http.ResponseWriter, session *Session) error {
@@ -278,23 +241,6 @@ func (m *SessionManager) GetAndVerifySession(r *http.Request) (*Session, error) 
 	return session, sessionError
 }
 
-func (m *SessionManager) RefreshRequestSession(w http.ResponseWriter, r *http.Request) *Session {
-	session, err := m.GetAndVerifySession(r)
-	if err != nil {
-		return m.RefreshNewRequestSession(w, m.GetRealIPFromRequest(r), GetClientSignature(r), session)
-	}
-	return session
-}
-
-func (m *SessionManager) RefreshRequestSessionFromContext(w http.ResponseWriter, r *http.Request) *Session {
-	session, _ := m.GetAndVerifySession(r)
-	return m.RefreshNewRequestSession(w, m.GetRealIPFromRequest(r), GetClientSignature(r), session)
-}
-
-func (m *SessionManager) ClearRequestSession(w http.ResponseWriter, r *http.Request) *Session {
-	return m.RefreshNewRequestSession(w, m.GetRealIPFromRequest(r), GetClientSignature(r), nil)
-}
-
 func (sess Session) GetAge() time.Duration {
 	return time.Since(sess.GenerateTime)
 }
@@ -361,14 +307,14 @@ func SecureObjectID() bson.ObjectID {
 // These exist so older code doesn't break, they construct/use the DefaultManager().
 
 func GetRealIPFromRequest(r *http.Request) string {
-	return DefaultManager().GetRealIPFromRequest(r)
+	return Manager().GetRealIPFromRequest(r)
 }
 func EncodeSession(session Session) (string, error) {
-	return DefaultManager().EncodeSession(session)
+	return Manager().EncodeSession(session)
 }
 func DecodeSession(encoded string) (*Session, error) {
-	return DefaultManager().DecodeSession(encoded)
+	return Manager().DecodeSession(encoded)
 }
 func GetAndVerifySession(r *http.Request) (*Session, error) {
-	return DefaultManager().GetAndVerifySession(r)
+	return Manager().GetAndVerifySession(r)
 }
