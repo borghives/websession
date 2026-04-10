@@ -9,6 +9,7 @@ import (
 type Constants struct {
 	SecretSession string `mapstructure:"SECRET_SESSION"`
 	SiteDomain    string `mapstructure:"SITE_DOMAIN"`
+	Port          string `mapstructure:"PORT"`
 }
 
 var EtherialConstants ether.LiminalStructure[Constants]
@@ -20,6 +21,10 @@ func CollapseConstants() Constants {
 	}
 	if constants.SecretSession == "" {
 		log.Fatal("missing secret for SessionManager")
+	}
+	if constants.Port == "" {
+		constants.Port = "8080"
+		log.Printf("defaulting to port %s", constants.Port)
 	}
 	return constants
 }
