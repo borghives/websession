@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-func RunListenAndServer(handler http.Handler) {
+func ListenAndServe(handler http.Handler) {
 	log.Print("starting server...")
 
 	hostInfo := GetHostInfo()
