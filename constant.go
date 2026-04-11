@@ -24,7 +24,6 @@ func CollapseConstants() Constants {
 	}
 	if constants.Port == "" {
 		constants.Port = "8080"
-		log.Printf("defaulting to port %s", constants.Port)
 	}
 	return constants
 }
