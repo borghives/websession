@@ -10,6 +10,7 @@ type Constants struct {
 	SecretSession string `mapstructure:"SECRET_SESSION"`
 	SiteDomain    string `mapstructure:"SITE_DOMAIN"`
 	Port          string `mapstructure:"PORT"`
+	AllowedHosts  string `mapstructure:"ALLOWED_HOSTS"`
 }
 
 var EtherialConstants ether.LiminalStructure[Constants]

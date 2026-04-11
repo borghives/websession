@@ -59,7 +59,7 @@ func getHostInfo() RutimeHostInfo {
 func GetAllowedHosts() map[string]bool {
 	// Determine allowed hosts for HTTP service.
 	var allowedHosts = map[string]bool{}
-	envAllowHosts := os.Getenv("ALLOW_HOSTS")
+	envAllowHosts := CollapseConstants().AllowedHosts
 	for host := range strings.SplitSeq(envAllowHosts, " ") {
 		allowedHosts[host] = true
 		log.Printf("Has allow host: %s", host)
