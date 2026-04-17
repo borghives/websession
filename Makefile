@@ -1,4 +1,4 @@
-.PHONY: all sync update
+.PHONY: all sync update tag
 
 all: 
 	@echo "Please specify a command: make init, make update, etc."
@@ -8,3 +8,6 @@ sync:
 
 update:
 	go get -u ; go mod tidy
+
+tag:
+	uptag-patch
