@@ -81,8 +81,7 @@ func (sess *Session) GenerateSessionToken() string {
 }
 
 func (sess *Session) GenerateTokenFromSalt(salt string) string {
-	sessToken := sess.GenerateSessionToken()
-	return GenerateTokenFromSalt(sessToken, salt)
+	return sess.GenerateHexID("session_token_" + salt)
 }
 
 func (sess Session) GetAge() time.Duration {
