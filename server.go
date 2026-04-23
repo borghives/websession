@@ -18,7 +18,7 @@ func ListenAndServeHost(handler http.Handler) {
 
 	// Start HTTP server.  Check Host header is allowed
 	log.Printf("listening on port %s", port)
-	if err := http.ListenAndServe(":"+port, RequestCheckAllowHost(handler)); err != nil {
+	if err := http.ListenAndServe(":"+port, RequestCheckAllowHost(LogResponseStatus(handler))); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -46,5 +46,34 @@ func RequestCheckAllowOnlyReadMethod(next http.Handler) http.Handler {
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func newLoggingResponseWriter(w http.ResponseWriter) *loggingResponseWriter {
+	return &loggingResponseWriter{w, http.StatusOK}
+}
+
+func (lrw *loggingResponseWriter) WriteHeader(code int) {
+	lrw.statusCode = code
+	lrw.ResponseWriter.WriteHeader(code)
+}
+
+func LogResponseStatus(next http.Handler) http.Handler {
+	appName := CollapseConstants().AppName
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lrw := newLoggingResponseWriter(w)
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("%s PANIC %s: %s - %v", appName, r.Method, r.URL.Path, err)
+				http.Error(lrw, "Internal Server Error", http.StatusInternalServerError)
+			}
+			log.Printf("%s HTTP %s [%d]: %s ", appName, r.Method, lrw.statusCode, r.URL.Path)
+		}()
+		next.ServeHTTP(lrw, r)
 	})
 }

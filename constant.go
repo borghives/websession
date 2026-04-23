@@ -7,6 +7,7 @@ import (
 )
 
 type Constants struct {
+	AppName       string `mapstructure:"APP_NAME"`
 	SecretSession string `mapstructure:"SECRET_SESSION"`
 	SiteDomain    string `mapstructure:"SITE_DOMAIN"`
 	Port          string `mapstructure:"PORT"`
