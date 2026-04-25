@@ -2,6 +2,7 @@ package websession
 
 import (
 	"log"
+	"log/slog"
 	"net/http"
 )
 
@@ -69,10 +70,10 @@ func LogResponseStatus(next http.Handler) http.Handler {
 		lrw := newLoggingResponseWriter(w)
 		defer func() {
 			if err := recover(); err != nil {
-				log.Printf("%s PANIC %s: %s - %v", appName, r.Method, r.URL.Path, err)
+				slog.Error("PANIC", slog.String("app", appName), slog.String("method", r.Method), slog.String("path", r.URL.Path), slog.Any("panic", err))
 				http.Error(lrw, "Internal Server Error", http.StatusInternalServerError)
 			}
-			log.Printf("%s HTTP %s [%d]: %s ", appName, r.Method, lrw.statusCode, r.URL.Path)
+			slog.Debug("HTTP", slog.String("app", appName), slog.String("method", r.Method), slog.Int("status", lrw.statusCode), slog.String("path", r.URL.Path))
 		}()
 		next.ServeHTTP(lrw, r)
 	})
