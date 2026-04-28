@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/borghives/kosmos-go v1.3.4
-	go.mongodb.org/mongo-driver/v2 v2.5.1
+	go.mongodb.org/mongo-driver/v2 v2.6.0
 )
 
 require (
