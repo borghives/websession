@@ -27,6 +27,7 @@ func ListenAndServeHost(handler http.Handler) {
 // RequestCheckAllowHost checks if the request's Host header is in the allowed list
 func RequestCheckAllowHost(next http.Handler) http.Handler {
 	var allowedHosts = GetAllowedHosts()
+	log.Printf("Allow hosts: %v", allowedHosts)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := allowedHosts[r.Host]; !ok {
 			log.Printf("Forbidden host: %s", r.Host)
