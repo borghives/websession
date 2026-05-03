@@ -87,6 +87,7 @@ func (sess *Session) GenerateTokenFromSalt(salt string) string {
 func (sess Session) GetAge() time.Duration {
 	return time.Since(sess.GenerateTime)
 }
+
 func SecureObjectID() bson.ObjectID {
 	var randomBytes [12]byte
 	_, err := rand.Read(randomBytes[:])
