@@ -1,9 +1,24 @@
 package websession
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"net/url"
 	"strings"
 )
+
+func MakeUniqueURL(readable string, token []byte, hiddenStrs ...string) string {
+	mac := hmac.New(sha256.New, token)
+	mac.Write([]byte(readable))
+	for _, hidden := range hiddenStrs {
+		mac.Write([]byte(hidden))
+	}
+	hash := mac.Sum(nil)
+	hashStr := MakeUrlSafe(base64.RawURLEncoding.EncodeToString(hash[:]))
+	return MakeUrlSafe(readable + "-" + hashStr[:5])
+
+}
 
 func MakeUrlSafe(str string) string {
 	// Convert to lowercase

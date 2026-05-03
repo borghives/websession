@@ -4,36 +4,14 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"io"
-	"log"
 	"math/big"
 )
-
-// DEPRECATED: Generating an ECDSA key deterministically using a constant reader
-// is NOT secure due to the strict entropy requirements of elliptic curves.
-// This function exists for backward compatibility but should not be used in new code.
-func GenerateKeyFromSecret(secret string) *ecdsa.PrivateKey {
-	// Hash the secret string to get a fixed size seed
-	hash := sha256.Sum256([]byte(secret))
-
-	// Convert hash to big.Int
-	seed := new(big.Int).SetBytes(hash[:])
-
-	// Generate a private key using the seed
-	curve := elliptic.P256()
-	privKey, err := ecdsa.GenerateKey(curve, newConstantReader(seed.Bytes()))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return privKey
-}
 
 // constantReader is an io.Reader that returns the same bytes every time.
 type constantReader struct {
@@ -43,10 +21,6 @@ type constantReader struct {
 func (r constantReader) Read(p []byte) (n int, err error) {
 	copy(p, r.seed)
 	return len(r.seed), nil
-}
-
-func newConstantReader(seed []byte) constantReader {
-	return constantReader{seed: seed}
 }
 
 // Function to sign a message
