@@ -1,4 +1,4 @@
-.PHONY: all sync update
+.PHONY: all sync update tag
 
 all: 
 	@echo "Please specify a command: make init, make update, etc."

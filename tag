@@ -1,1 +1,1 @@
-github.com/borghives/websession@v1.1.36
+github.com/borghives/websession@v1.1.37
