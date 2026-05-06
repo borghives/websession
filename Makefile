@@ -1,4 +1,4 @@
-.PHONY: all sync update tag
+.PHONY: all sync update
 
 all: 
 	@echo "Please specify a command: make init, make update, etc."
@@ -10,4 +10,5 @@ update:
 	go get -u ; go mod tidy
 
 tag:
-	uptag-patch
+	@uptag-patch
+	@echo $$(getorigin)@$$(gettag) > tag
