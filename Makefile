@@ -2,7 +2,7 @@ DEPS=kosmos-go
 DEPS_DIR=$(addprefix ../,$(DEPS))
 DEPS_VERSION_TAG=$(addsuffix /tag,$(DEPS_DIR))
 
-.PHONY: all sync update tag
+.PHONY: all sync update tag clean
 
 all: 
 	@echo "Please specify a command: make init, make update, etc."
@@ -22,3 +22,6 @@ tag:
 
 $(DEPS_VERSION_TAG) :
 	@ $(MAKE) tag -C $(dir $@)
+
+clean:
+	rm -f tag
