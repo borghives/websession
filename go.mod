@@ -3,7 +3,7 @@ module github.com/borghives/websession
 go 1.26.1
 
 require (
-	github.com/borghives/kosmos-go v1.4.21
+	github.com/borghives/kosmos-go v1.4.22
 	go.mongodb.org/mongo-driver/v2 v2.6.0
 )
 
@@ -53,7 +53,7 @@ require (
 	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	google.golang.org/api v0.279.0 // indirect
+	google.golang.org/api v0.280.0 // indirect
 	google.golang.org/genproto v0.0.0-20260519071638-aa98bba5eb94 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260519071638-aa98bba5eb94 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260519071638-aa98bba5eb94 // indirect
