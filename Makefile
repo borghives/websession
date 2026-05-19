@@ -2,7 +2,7 @@ DEPS=kosmos-go
 DEPS_DIR=$(addprefix ../,$(DEPS))
 DEPS_VERSION_TAG=$(addsuffix /tag,$(DEPS_DIR))
 
-.PHONY: all sync update tag clean
+.PHONY: all sync update tag clean commit stage submit
 
 all: 
 	@echo "Please specify a command: make init, make update, etc."
@@ -25,3 +25,11 @@ $(DEPS_VERSION_TAG) :
 
 clean:
 	rm -f tag
+
+stage:
+	git add .
+
+commit:
+	gca
+
+submit: update stage commit tag 
