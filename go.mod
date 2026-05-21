@@ -3,7 +3,7 @@ module github.com/borghives/websession
 go 1.26.1
 
 require (
-	github.com/borghives/kosmos-go v1.4.23
+	github.com/borghives/kosmos-go v1.4.24
 	go.mongodb.org/mongo-driver/v2 v2.6.0
 )
 
@@ -22,7 +22,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
-	github.com/googleapis/enterprise-certificate-proxy v0.3.15 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.16 // indirect
 	github.com/googleapis/gax-go/v2 v2.22.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
