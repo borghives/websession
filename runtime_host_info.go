@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/borghives/kosmos-go"
+	"git.mypierian.com/borghives/kosmos-go"
 )
 
 type RutimeHostInfo struct {

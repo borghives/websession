@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"time"
 
-	"github.com/borghives/kosmos-go"
+	"git.mypierian.com/borghives/kosmos-go"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 

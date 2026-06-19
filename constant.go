@@ -3,7 +3,7 @@ package websession
 import (
 	"log"
 
-	"github.com/borghives/kosmos-go/ether"
+	"git.mypierian.com/borghives/kosmos-go/ether"
 )
 
 type Constants struct {

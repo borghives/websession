@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/borghives/kosmos-go"
+	"git.mypierian.com/borghives/kosmos-go"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -245,10 +245,10 @@ func TestRefreshStaleRequestSession(t *testing.T) {
 	rBad, _ := http.NewRequest("GET", "/", nil)
 	rBad.Header.Set("X-Forwarded-For", "1.2.3.4")
 	rBad.AddCookie(&http.Cookie{Name: manager.CookieName, Value: "invalid_cookie"})
-	
+
 	w3 := httptest.NewRecorder()
 	newRefreshed := manager.RefreshStaleRequestSession(w3, rBad)
-	
+
 	if newRefreshed.ID == createdSession.ID {
 		t.Errorf("RefreshStaleRequestSession: expected session to be recreated if invalid")
 	}
@@ -263,7 +263,7 @@ func TestClearRequestSession(t *testing.T) {
 	r.Header.Set("X-Real-IP", "localhost")
 
 	createdSession := manager.NewRequestSession(w, r)
-	
+
 	w2 := httptest.NewRecorder()
 	clearedSession := manager.ClearRequestSession(w2, r)
 
