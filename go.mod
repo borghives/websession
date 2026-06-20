@@ -3,7 +3,7 @@ module github.com/borghives/websession
 go 1.26.1
 
 require (
-	git.mypierian.com/borghives/kosmos-go v1.5.0
+	git.mypierian.com/borghives/kosmos-go v1.5.1
 	go.mongodb.org/mongo-driver/v2 v2.7.0
 )
 
